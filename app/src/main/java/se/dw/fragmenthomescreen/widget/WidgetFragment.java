@@ -36,259 +36,253 @@ import se.dw.fragmenthomescreen.object.LauncherAppWidgetInfo;
 public class WidgetFragment extends Fragment {
 
 
-	int screen = 0;
+    int screen = 0;
 
-	ScrollView scrollContainer;
-	WidgetContainer widgetContainer;
-	Handler handler;
-	boolean widgetsAdded = false;
+    ScrollView scrollContainer;
+    WidgetContainer widgetContainer;
+    Handler handler;
+    boolean widgetsAdded = false;
+    BindWidgetTask bindTask = null;
+    String TAG = "WidgetFragment";
+    BinderCallback callback = null;
 
-	ViewTreeObserver.OnGlobalLayoutListener layoutListener = new ViewTreeObserver.OnGlobalLayoutListener() {
-		@Override
-		public void onGlobalLayout () {
-			if ( widgetsAdded == false ) {
-				widgetsAdded = true;
-				if ( widgetContainer != null && widgetContainer.getChildCount() == 0 ) {
-					bindDesktopItems(WidgetPersistance.getWidgets("" + screen), false, null);
-				}
-			}
-		}
-	};
-	BindWidgetTask bindTask = null;
+    ViewTreeObserver.OnGlobalLayoutListener layoutListener = new ViewTreeObserver.OnGlobalLayoutListener() {
+        @Override
+        public void onGlobalLayout() {
+            if (widgetsAdded == false) {
+                widgetsAdded = true;
+                if (widgetContainer != null && widgetContainer.getChildCount() == 0) {
+                    bindDesktopItems(WidgetPersistance.getWidgets("" + screen), false, null);
+                }
+            }
+        }
+    };
 
-	public static WidgetFragment newInstance (int screen) {
-		WidgetFragment frag = new WidgetFragment();
-		frag.screen = screen;
-		return frag;
-	}
+    public static WidgetFragment newInstance(int screen) {
+        WidgetFragment frag = new WidgetFragment();
+        frag.screen = screen;
+        return frag;
+    }
 
+    @Override
+    public View onCreateView(LayoutInflater inflater, @Nullable ViewGroup container, @Nullable Bundle savedInstanceState) {
+        scrollContainer = new ScrollView(getActivity());
+        widgetContainer = new WidgetContainer(getActivity());
+        widgetContainer.setScreen(screen);
+        handler = new Handler();
 
-	@Override
-	public View onCreateView (LayoutInflater inflater, @Nullable ViewGroup container, @Nullable Bundle savedInstanceState) {
-		scrollContainer = new ScrollView(getActivity());
-		widgetContainer = new WidgetContainer(getActivity());
-		widgetContainer.setScreen(screen);
-		handler = new Handler();
+        scrollContainer.getViewTreeObserver().addOnGlobalLayoutListener(layoutListener);
 
-		scrollContainer.getViewTreeObserver().addOnGlobalLayoutListener(layoutListener);
+        scrollContainer.addView(widgetContainer);
 
-		scrollContainer.addView(widgetContainer);
+        return scrollContainer;
+    }
 
-		return scrollContainer;
-	}
+    public ItemInfo attachWidget(ItemInfo info) {
 
-	String TAG = "WidgetFragment";
+        if (info != null) {
+            widgetContainer.addItemInfo(info);
+        } else {
+            Log.w(TAG, "Could not find space for item");
+        }
 
-	public ItemInfo attachWidget (ItemInfo info) {
+        return info;
+    }
 
-		if ( info != null ) {
-			widgetContainer.addItemInfo(info);
-		} else {
-			Log.w(TAG, "Could not find space for item");
-		}
+    public void removeItemInfo(ItemInfo info) {
+        widgetContainer.removeItemInfo(info);
+    }
 
-		return info;
-	}
+    private void bindDesktopItems(ArrayList<ItemInfo> appWidgets, boolean isRefresh, BinderCallback callback) {
+        if (appWidgets == null) {
+            return;
+        }
 
-	public void removeItemInfo (ItemInfo info) {
-		widgetContainer.removeItemInfo(info);
-	}
+        MainActivity main = (MainActivity) getActivity();
+        if (main == null) {
+            Log.wtf(TAG, "bindAppWidgets ERROR.. main is null");
+            return;
+        }
 
+        if (bindTask == null) {
+            this.callback = callback;
+            bindTask = new BindWidgetTask(main, isRefresh);
+            Log.d(TAG, "bindAppWidgets for screen=" + screen + " starting.. " + appWidgets.size() + "widgets");
+            if (Build.VERSION.SDK_INT >= 11) {
+                bindTask.executeOnExecutor(AsyncTask.SERIAL_EXECUTOR, appWidgets);
+            } else {
+                bindTask.execute(appWidgets);
+            }
+        }
+    }
 
-	private void bindDesktopItems (ArrayList<ItemInfo> appWidgets, boolean isRefresh, BinderCallback callback) {
-		if ( appWidgets == null ) {
-			return;
-		}
+    public WidgetContainer getWidgetContainer() {
+        return widgetContainer;
+    }
 
-		MainActivity main = (MainActivity) getActivity();
-		if ( main == null ) {
-			Log.wtf(TAG, "bindAppWidgets ERROR.. main is null");
-			return;
-		}
+    public int getScreen() {
+        return screen;
+    }
 
-		if ( bindTask == null ) {
-			this.callback = callback;
-			bindTask = new BindWidgetTask(main, isRefresh);
-			Log.d(TAG, "bindAppWidgets for screen=" + screen + " starting.. " + appWidgets.size() + "widgets");
-			if ( Build.VERSION.SDK_INT >= 11 ) {
-				bindTask.executeOnExecutor(AsyncTask.SERIAL_EXECUTOR, appWidgets);
-			} else {
-				bindTask.execute(appWidgets);
-			}
-		}
-	}
+    /**
+     * checkToAddWidget
+     * At the creation of WidgetFragment,
+     * add a default widget so that the homescreen is not empty
+     * shows how to add widgets programmatically
+     */
+    private void checkToAddWidget() {
+        if (getActivity() == null) {
+            return;
+        }
+        SharedPreferences sharedPrefs = PreferenceManager.getDefaultSharedPreferences(App.get());
+        if (!sharedPrefs.contains("widgetpage-" + screen + "-checkToAddWidget")) {
 
+            sharedPrefs.edit().putBoolean("widgetpage-" + screen + "-checkToAddWidget", true).commit();
 
-	public WidgetContainer getWidgetContainer () {
-		return widgetContainer;
-	}
+            MainActivity m = (MainActivity) getActivity();
+            AppWidgetManager manager = m.getAppWidgetManager();
+            AppWidgetHost host = m.getAppWidgetHost();
 
-	BinderCallback callback = null;
+            List<AppWidgetProviderInfo> widgetList = manager.getInstalledProviders();
 
-	public int getScreen () {
-		return screen;
-	}
+            AppWidgetProviderInfo searchProvider = null;
+            AppWidgetProviderInfo searchProvider2 = null;
+            AppWidgetProviderInfo clockProvider = null;
 
-	public interface BinderCallback {
-		public void onStarted ();
+            for (AppWidgetProviderInfo info : widgetList) {
+                Log.d(TAG, info.provider.getPackageName() + " " + info.provider.getClassName());
+                if (info.provider.getClassName().equals("com.google.android.googlequicksearchbox.SearchWidgetProvider")) {
+                    searchProvider = info;
+                    break;
+                }
+                if (info.provider.getClassName().equals("com.android.alarmclock.AnalogAppWidgetProvider")) {
+                    clockProvider = info;
+                }
+                if (info.provider.getClassName().equals("com.android.alarmclock.DigitalAppWidgetProvider")) {
+                    clockProvider = info;
+                }
+                if (info.provider.getClassName().equals("com.android.quicksearchbox.SearchWidgetProvider")) {
+                    searchProvider2 = info;
+                }
+            }
+            if (searchProvider != null || searchProvider2 != null || clockProvider != null) {
+                AppWidgetProviderInfo provider = null;
+                if (searchProvider != null) {
+                    provider = searchProvider;
+                } else if (clockProvider != null) {
+                    provider = clockProvider;
+                } else {
+                    provider = searchProvider2;
+                }
 
-		public void onDone ();
+                addProvider(m, host, manager, provider);
+            }
+        }
 
-		public void aboutToAdd (ItemInfo info);
+    }
 
-		public void added (ItemInfo info);
-	}
+    public void addProvider(MainActivity m, AppWidgetHost host, AppWidgetManager manager, AppWidgetProviderInfo provider) {
+        int id = host.allocateAppWidgetId();
+        boolean success;
+        success = manager.bindAppWidgetIdIfAllowed(id, provider.provider);
 
-	class BindWidgetTask extends AsyncTask<ArrayList<ItemInfo>, ItemInfo, LinkedList<ItemInfo>> {
-		MainActivity main = null;
-		boolean isRefresh = false;
-		private LinkedList<ItemInfo> mItemInfos;
+        if (success) {
+            AppWidgetHostView hostView = host.createView(getActivity(), id, provider);
+            AppWidgetProviderInfo appWidgetInfo = manager.getAppWidgetInfo(id);
 
-		public BindWidgetTask (MainActivity main, boolean isRefresh) {
-			this.main = main;
-			this.isRefresh = isRefresh;
-		}
+            LauncherAppWidgetInfo info = new LauncherAppWidgetInfo(id);
+            info.setHostView(hostView);
+            info.getHostView().setAppWidget(id, appWidgetInfo);
 
-		@Override
-		protected void onPostExecute (LinkedList<ItemInfo> s) {
-			if ( !isRefresh ) widgetContainer.removeAllViews();
+            ItemInfo launcherInfo = attachWidget(info);
+            if (launcherInfo != null) {
+                WidgetPersistance.addDesktopAppWidget(screen, launcherInfo);
+            }
 
-			for ( ItemInfo i : s ) {
-				if ( callback != null ) callback.aboutToAdd(i);
-				addItem(i);
-				if ( callback != null ) callback.added(i);
-			}
+        } else {
+            Intent intent = new Intent(AppWidgetManager.ACTION_APPWIDGET_BIND);
+            intent.putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id);
+            intent.putExtra(AppWidgetManager.EXTRA_APPWIDGET_PROVIDER, provider.provider);
+            m.startActivityForResult(intent, MainActivity.REQUEST_BIND_APPWIDGET);
+        }
 
-			widgetContainer.isAdding(false);
-			if ( callback != null ) callback.onDone();
-			bindTask = null;
-			callback = null;
-		}
+    }
 
-		@Override
-		protected void onPreExecute () {
-			if ( callback != null ) callback.onStarted();
+    public interface BinderCallback {
+        public void onStarted();
 
-			widgetContainer.isAdding(true);
-		}
+        public void onDone();
 
-		protected void addItem (ItemInfo item) {
+        public void aboutToAdd(ItemInfo info);
 
-			if ( item instanceof LauncherAppWidgetInfo ) {
+        public void added(ItemInfo info);
+    }
 
-				LauncherAppWidgetInfo info = (LauncherAppWidgetInfo) item;
-				final int appWidgetId = info.appWidgetId;
-				final AppWidgetProviderInfo appWidgetInfo = main.getAppWidgetManager().getAppWidgetInfo(appWidgetId);
-				info.setHostView(main.getAppWidgetHost().createView(getActivity(), appWidgetId, appWidgetInfo));
-				info.getHostView().setAppWidget(appWidgetId, appWidgetInfo);
-				info.getHostView().setTag(item);
-				item = info;
-			}
-			attachWidget(item);
-		}
+    class BindWidgetTask extends AsyncTask<ArrayList<ItemInfo>, ItemInfo, LinkedList<ItemInfo>> {
+        MainActivity main = null;
+        boolean isRefresh = false;
+        private LinkedList<ItemInfo> mItemInfos;
 
-		@Override
-		protected void onProgressUpdate (ItemInfo... values) {
-			addItem(values[0]);
-		}
+        public BindWidgetTask(MainActivity main, boolean isRefresh) {
+            this.main = main;
+            this.isRefresh = isRefresh;
+        }
 
-		@Override
-		protected LinkedList<ItemInfo> doInBackground (ArrayList<ItemInfo>... params) {
-			ArrayList<ItemInfo> appWidgets = params[0];
+        @Override
+        protected void onPostExecute(LinkedList<ItemInfo> s) {
+            if (!isRefresh) widgetContainer.removeAllViews();
 
-			// Sort widgets so active workspace is bound first
-			mItemInfos = new LinkedList<>();
+            for (ItemInfo i : s) {
+                if (callback != null) callback.aboutToAdd(i);
+                addItem(i);
+                if (callback != null) callback.added(i);
+            }
 
-			for ( ItemInfo info : appWidgets ) {
-				mItemInfos.add(info);
-			}
+            widgetContainer.isAdding(false);
+            if (callback != null) callback.onDone();
+            bindTask = null;
+            callback = null;
+        }
 
-			return mItemInfos;
-		}
-	}
+        @Override
+        protected void onPreExecute() {
+            if (callback != null) callback.onStarted();
 
-	/**
-	 * checkToAddWidget
-	 * <p/>
-	 * At the creation of WidgetFragment,
-	 * add a default widget so that the homescreen is not empty
-	 * shows how to add widgets programmatically
-	 */
-	private void checkToAddWidget () {
-		if ( getActivity() == null ) {
-			return;
-		}
-		SharedPreferences sharedPrefs = PreferenceManager.getDefaultSharedPreferences(App.get());
-		if ( !sharedPrefs.contains("widgetpage-" + screen + "-checkToAddWidget") ) {
+            widgetContainer.isAdding(true);
+        }
 
-			sharedPrefs.edit().putBoolean("widgetpage-" + screen + "-checkToAddWidget", true).commit();
+        protected void addItem(ItemInfo item) {
 
-			MainActivity m = (MainActivity) getActivity();
-			AppWidgetManager manager = m.getAppWidgetManager();
-			AppWidgetHost host = m.getAppWidgetHost();
+            if (item instanceof LauncherAppWidgetInfo) {
 
-			List<AppWidgetProviderInfo> widgetList = manager.getInstalledProviders();
+                LauncherAppWidgetInfo info = (LauncherAppWidgetInfo) item;
+                final int appWidgetId = info.appWidgetId;
+                final AppWidgetProviderInfo appWidgetInfo = main.getAppWidgetManager().getAppWidgetInfo(appWidgetId);
+                info.setHostView(main.getAppWidgetHost().createView(getActivity(), appWidgetId, appWidgetInfo));
+                info.getHostView().setAppWidget(appWidgetId, appWidgetInfo);
+                info.getHostView().setTag(item);
+                item = info;
+            }
+            attachWidget(item);
+        }
 
-			AppWidgetProviderInfo searchProvider = null;
-			AppWidgetProviderInfo search2Provider = null;
-			AppWidgetProviderInfo clockProvider = null;
+        @Override
+        protected void onProgressUpdate(ItemInfo... values) {
+            addItem(values[0]);
+        }
 
-			for ( AppWidgetProviderInfo info : widgetList ) {
-				Log.d(TAG, info.provider.getPackageName() + " " + info.provider.getClassName());
-				if ( info.provider.getClassName().equals("com.google.android.googlequicksearchbox.SearchWidgetProvider") ) {
-					searchProvider = info;
-					break;
-				}
-				if ( info.provider.getClassName().equals("com.android.alarmclock.AnalogAppWidgetProvider") ) {
-					clockProvider = info;
-				}
-				if ( info.provider.getClassName().equals("com.android.alarmclock.DigitalAppWidgetProvider") ) {
-					clockProvider = info;
-				}
-				if ( info.provider.getClassName().equals("com.android.quicksearchbox.SearchWidgetProvider") ) {
-					search2Provider = info;
-				}
-			}
-			if ( searchProvider != null || search2Provider != null || clockProvider != null ) {
-				AppWidgetProviderInfo provider = null;
-				if ( searchProvider != null ) {
-					provider = searchProvider;
-				} else if ( clockProvider != null ) {
-					provider = clockProvider;
-				} else {
-					provider = search2Provider;
-				}
+        @Override
+        protected LinkedList<ItemInfo> doInBackground(ArrayList<ItemInfo>... params) {
+            ArrayList<ItemInfo> appWidgets = params[0];
 
-				addProvider(m, host, manager, provider);
-			}
-		}
+            // Sort widgets so active workspace is bound first
+            mItemInfos = new LinkedList<>();
 
-	}
+            for (ItemInfo info : appWidgets) {
+                mItemInfos.add(info);
+            }
 
-	public void addProvider (MainActivity m, AppWidgetHost host, AppWidgetManager manager, AppWidgetProviderInfo provider) {
-		int id = host.allocateAppWidgetId();
-		boolean success = false;
-		success = manager.bindAppWidgetIdIfAllowed(id, provider.provider);
-
-		if ( success ) {
-			AppWidgetHostView hostView = host.createView(getActivity(), id, provider);
-			AppWidgetProviderInfo appWidgetInfo = manager.getAppWidgetInfo(id);
-
-			LauncherAppWidgetInfo info = new LauncherAppWidgetInfo(id);
-			info.setHostView(hostView);
-			info.getHostView().setAppWidget(id, appWidgetInfo);
-
-			ItemInfo launcherInfo = attachWidget(info);
-			if ( launcherInfo != null ) {
-				WidgetPersistance.addDesktopAppWidget(screen, launcherInfo);
-			}
-
-		} else {
-			Intent intent = new Intent(AppWidgetManager.ACTION_APPWIDGET_BIND);
-			intent.putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id);
-			intent.putExtra(AppWidgetManager.EXTRA_APPWIDGET_PROVIDER, provider.provider);
-			m.startActivityForResult(intent, MainActivity.REQUEST_BIND_APPWIDGET);
-		}
-
-	}
+            return mItemInfos;
+        }
+    }
 }

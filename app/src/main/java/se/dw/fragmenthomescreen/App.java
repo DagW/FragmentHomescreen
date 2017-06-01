@@ -9,20 +9,20 @@ import android.preference.PreferenceManager;
  */
 public class App extends Application {
 
-	static App instance = null;
+    static App instance = null;
 
-	@Override
-	public void onCreate () {
-		super.onCreate();
-		instance = this;
-	}
+    public static App get() {
+        return instance;
+    }
 
-	public static App get(){
-		return instance;
-	}
+    @Override
+    public void onCreate() {
+        super.onCreate();
+        instance = this;
+    }
 
-	public SharedPreferences getSharedPreferences(){
-		SharedPreferences sharedPrefs = PreferenceManager.getDefaultSharedPreferences(App.get());
-		return sharedPrefs;
-	}
+    public SharedPreferences getSharedPreferences() {
+        SharedPreferences sharedPrefs = PreferenceManager.getDefaultSharedPreferences(App.get());
+        return sharedPrefs;
+    }
 }
